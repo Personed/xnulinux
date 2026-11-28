@@ -65,6 +65,16 @@ MVP requirements:
 
 ### Syscall classification and stop taxonomy
 
+Pinned XNU evidence for the x86_64 userspace syscall contract is tag `xnu-12377.121.6` (checkout commit `ac9718fb1af618d5ce8678d0dc6e8a58f252216f`), especially [`osfmk/mach/i386/syscall_sw.h`](https://github.com/apple-oss-distributions/xnu/blob/xnu-12377.121.6/osfmk/mach/i386/syscall_sw.h) and [`libsyscall/custom/SYS.h`](https://github.com/apple-oss-distributions/xnu/blob/xnu-12377.121.6/libsyscall/custom/SYS.h):
+
+- the 64-bit syscall number uses the low 32 bits; class occupies bits 24–31, and the pinned header says the high-order 32 bits are unused;
+- classes are Mach=1, Unix/BSD=2, machine-dependent=3, diagnostics=4, and Mach IPC=5;
+- x86_64 BSD wrappers move `rcx` to `r10` before `syscall` because the architectural instruction clobbers `rcx`;
+- x86_64 BSD wrappers test the carry flag after return: carry clear is success, carry set treats `rax` as the error value passed to the userspace error path;
+- Mach call wrappers construct class-1 numbers and use negative trap numbers in the pinned x86_64 wrapper macro.
+
+For the MVP register contract, `rax` low 32 bits carry the encoded syscall number, arguments follow the wrapper-visible order `rdi,rsi,rdx,r10,r8,r9`, and `rcx/r11` are architecturally clobbered by `syscall`. BSD success/error uses the pinned carry-flag rule above. Any second return-value use of `rdx` must be pinned per syscall before production; the MVP need only preserve and propagate `rdx` exactly rather than inventing a generic second-return rule.
+
 The stop record must carry scope, kind, register generation, fault vector/code, fault address, fault IP, and a timestamp/sequence number. It must never collapse Darwin and Linux namespaces.
 
 Minimum user-task stop kinds:
