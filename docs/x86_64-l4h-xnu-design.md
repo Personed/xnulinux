@@ -75,9 +75,10 @@ Pinned XNU evidence for the x86_64 userspace syscall contract is tag `xnu-12377.
 - classes are Mach=1, Unix/BSD=2, machine-dependent=3, diagnostics=4, and Mach IPC=5;
 - x86_64 BSD wrappers move `rcx` to `r10` before `syscall` because the architectural instruction clobbers `rcx`;
 - x86_64 BSD wrappers test the carry flag after return: carry clear is success, carry set treats `rax` as the error value passed to the userspace error path;
-- Mach call wrappers construct class-1 numbers and use negative trap numbers in the pinned x86_64 wrapper macro.
+- Mach call wrappers list negative trap numbers, but the pinned x86_64 wrapper macro negates that input when constructing the class-1 value. The decoder must therefore treat the low syscall-number bits as the positive trap magnitude, not as a negative encoded trap number;
+- pinned [`bsd/dev/i386/systemcalls.c`](https://github.com/apple-oss-distributions/xnu/blob/xnu-12377.121.6/bsd/dev/i386/systemcalls.c) writes BSD return outputs into the saved user registers according to the syscall return type: integer/pair returns use the two return slots, while single 64-bit-style return types zero `rdx` on success.
 
-For the MVP register contract, `rax` low 32 bits carry the encoded syscall number, arguments follow the wrapper-visible order `rdi,rsi,rdx,r10,r8,r9`, and `rcx/r11` are architecturally clobbered by `syscall`. BSD success/error uses the pinned carry-flag rule above. Any second return-value use of `rdx` must be pinned per syscall before production; the MVP need only preserve and propagate `rdx` exactly rather than inventing a generic second-return rule.
+For the MVP register contract, `rax` low 32 bits carry the encoded syscall number, arguments follow the wrapper-visible order `rdi,rsi,rdx,r10,r8,r9`, and `rcx/r11` are architecturally clobbered by `syscall`. BSD success/error uses the pinned carry-flag rule above. The mediator must write the syscall's output register values rather than restore input argument registers: `rax` receives the return or error value, and `rdx` receives the pinned second return output for the syscall/return type. In particular, successful single 64-bit-style returns such as read/write-size results clear `rdx` rather than preserving the original third argument.
 
 The stop record must carry scope, kind, register generation, fault vector/code, fault address, fault IP, and a timestamp/sequence number. It must never collapse Darwin and Linux namespaces.
 
