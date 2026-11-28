@@ -52,9 +52,17 @@ Alternative E must remain an explicit architecture candidate. Before stage 6 XNU
 
 The minimum upstream/L4H requirement before XNU is a **foreign-kernel domain primitive**: a way for Linux/FKI to create, enter, interrupt, inspect, resume, and destroy an isolated execution context whose faults are routed to a supervisor endpoint, with controlled sharing of memory and capabilities.
 
-Pinned upstream evidence narrows but does not eliminate that requirement. `arch/l4h/kernel/uctx.c` describes `l4h_uctx_alloc_badge()` as being “for a module's own user contexts”; `arch/l4h/kernel/ksyms.c` exports object allocation, CNode mint/copy/delete, TCB configure/set-space/sched/flags/suspend/resume, user-run/register/FPU operations, VSpace mapping, timer, signal, and IPI primitives. The repository's existing AArch64 `fki_l4h.c` already uses those primitives to allocate a module-owned TCB/reply object, mint a badged fault endpoint, enable syscall trapping, and run the context through `l4h_user_run_ex`.
+Pinned upstream evidence narrows but does not eliminate that requirement; the facts must be attributed by file rather than treated as one exported foreign-domain API:
 
-Therefore the first synthetic x86 domain probe may not require an upstream L4H feature addition if the same primitives behave correctly on x86_64. What remains unproven is the foreign-kernel-domain contract around them: independent VSpace composition, controlled memory sharing, interruption priority/scheduling, full x86 register/FPU control, repairable fault resume, cleanup, and the semantic distinction between user tasks and the XNU domain. Stage 1 must first validate or reject reuse of these existing primitives before requesting any upstream modification.
+- `arch/l4h/kernel/uctx.c` describes `l4h_uctx_alloc_badge()` as being “for a module's own user contexts” and exports it together with `l4h_empty_cnode_cptr()`;
+- `arch/l4h/kernel/caps.c`, not `ksyms.c`, exports object and slot primitives such as `l4h_obj_alloc()`, `l4h_obj_free()`, `l4h_slot_alloc()`, and `l4h_slot_delete()`;
+- `arch/l4h/kernel/ksyms.c` exports the provider operations needed to manipulate module-owned user contexts: CNode copy/mint/delete, page-table/frame map/unmap and VSpace flush, TCB configure/set-space/flags/suspend/resume, `l4h_user_run()`/`l4h_user_run_ex()`, register/FPU synchronization, timer arm, signal, hypercall, and user deschedule;
+- `include/l4h/provider-ops.h` declares lower-level scheduling/IPI operations such as `l4h_tcb_sched()`, `l4h_tcb_bind_notification()`, `l4h_sc_unbind()`, and `l4h_send_ipi()`, but the pinned `ksyms.c` does not export them for modules;
+- `arch/l4h/kernel/vspace.c` exports `l4h_vspace_get()`/`l4h_vspace_put()`, but this is explicitly a temporary empty process-VSpace borrowed from the finite pool, not creation of an independently owned VSpace object. The caller must delete its mappings before returning it, and the pool must retain enough VSpaces for vCPUs.
+
+The repository's existing AArch64 `fki_l4h.c` already uses some of these primitives to allocate a module-owned TCB/reply object, mint a badged fault endpoint, enable syscall trapping, and run the context through `l4h_user_run_ex`. That is evidence for module-owned user-context reuse, not evidence for a complete foreign-kernel domain.
+
+Therefore the first synthetic x86 domain probe may not require an upstream L4H feature addition if the same primitives behave correctly on x86_64. What remains unproven is the foreign-kernel-domain contract around them: independently owned VSpace lifetime, controlled memory sharing, explicit scheduling/priority control, cross-vCPU interruption/IPI semantics, full x86 register/FPU control, repairable fault resume, cleanup, and the semantic distinction between user tasks and the XNU domain. Stage 1 must first validate or reject reuse of these existing primitives before requesting any upstream modification.
 
 ## Target architecture for the MVP
 
