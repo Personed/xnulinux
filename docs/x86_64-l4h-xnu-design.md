@@ -27,7 +27,11 @@ Use **alternative B** for the first experimental implementation: XNU must not ru
 
 “Logically privileged” means XNU may implement kernel semantics and manage user tasks. “Architecturally unprivileged” means its instructions execute in seL4 user mode; privileged x86 operations are either patched into explicit hostcalls or rejected. This is a deep-paravirtualization design, not execution of unmodified ring-0 XNU.
 
-The minimum upstream/L4H addition required before XNU is a **foreign-kernel domain primitive**: a way for Linux/FKI to create, enter, interrupt, inspect, resume, and destroy an isolated execution context whose faults are routed to a supervisor endpoint, with controlled sharing of memory and capabilities. If upstream/current L4H cannot express that primitive, the architecture is blocked until that small provider/supervisor extension exists. Current evidence does not prove that it already exists.
+The minimum upstream/L4H requirement before XNU is a **foreign-kernel domain primitive**: a way for Linux/FKI to create, enter, interrupt, inspect, resume, and destroy an isolated execution context whose faults are routed to a supervisor endpoint, with controlled sharing of memory and capabilities.
+
+Pinned upstream evidence narrows but does not eliminate that requirement. `arch/l4h/kernel/uctx.c` describes `l4h_uctx_alloc_badge()` as being “for a module's own user contexts”; `arch/l4h/kernel/ksyms.c` exports object allocation, CNode mint/copy/delete, TCB configure/set-space/sched/flags/suspend/resume, user-run/register/FPU operations, VSpace mapping, timer, signal, and IPI primitives. The repository's existing AArch64 `fki_l4h.c` already uses those primitives to allocate a module-owned TCB/reply object, mint a badged fault endpoint, enable syscall trapping, and run the context through `l4h_user_run_ex`.
+
+Therefore the first synthetic x86 domain probe may not require an upstream L4H feature addition if the same primitives behave correctly on x86_64. What remains unproven is the foreign-kernel-domain contract around them: independent VSpace composition, controlled memory sharing, interruption priority/scheduling, full x86 register/FPU control, repairable fault resume, cleanup, and the semantic distinction between user tasks and the XNU domain. Stage 1 must first validate or reject reuse of these existing primitives before requesting any upstream modification.
 
 ## Target architecture for the MVP
 
@@ -163,4 +167,4 @@ Production requires all of the following before support claims:
 
 ## Decision requested by this design
 
-The first implementation lane should be stage 1 plus a non-XNU synthetic design artifact only if it can remain small: define the foreign-kernel-domain primitive and its exact owner/rollback contract. If investigation shows that upstream L4H cannot expose isolated foreign-kernel contexts without major kernel redesign, the correct next output is a revised architecture decision rather than XNU code.
+The first implementation lane should be stage 1 plus a non-XNU synthetic design artifact only if it can remain small: define the foreign-kernel-domain primitive and its exact owner/rollback contract, explicitly starting from the existing module-owned-context primitives rather than assuming a new upstream feature. If validation shows they cannot express the required isolated domain without major redesign, the correct next output is a revised architecture decision rather than XNU code.
