@@ -130,11 +130,14 @@ Production requires all of the following before support claims:
 
 3. **Synthetic kernel-domain fault probe**
    - Run controlled x86 code in the isolated domain; trigger explicit hostcall, controlled page fault, and controlled synchronous exception.
-   - Exit criterion: supervisor receives correctly badged stops with full registers, can inspect/resume or terminate the domain, and Linux continues running.
+   - Include one repairable page fault: initially leave a data page unmapped, take the fault, map the page through the supervisor, resume the interrupted instruction/stream, and require the probe to execute a post-fault completion marker. Merely terminating the domain proves isolation but not recovery.
+   - Exit criterion: supervisor receives correctly badged stops with full registers, completes the repairable-fault resume path, can still terminate the domain after an unrecoverable exception, and Linux continues running.
 
 4. **Synthetic user-task mediation probe**
    - Execute a Darwin-encoded safe synthetic syscall such as the already established `0x02000004` encoding, plus controlled page fault and exception fixtures.
-   - Exit criterion: correct Darwin-vs-Linux classification, full register/XSAVE preservation, restart/resume behavior, and cleanup.
+   - Exercise the MVP memory operations without XNU: map, unmap, protection change, flush/invalidation, copyin/copyout success, copyin/copyout fault, and revocation/cleanup races that are representable in the harness.
+   - Exercise at least one one-shot host timer stop before ABI freeze: arm it, observe correct preemption/stop ordering, resume or clean up the interrupted context, and verify that the timer event cannot be confused with a syscall or fault.
+   - Exit criterion: correct Darwin-vs-Linux classification, full register/XSAVE preservation, restart/resume behavior, memory/timer semantics, and cleanup.
 
 5. **XNU machine ABI adapter design freeze**
    - Only after probes pass, freeze an x86-specific replacement/parallel contract for the current AArch64 LINUX64 ABI concepts.
